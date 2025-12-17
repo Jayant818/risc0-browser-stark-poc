@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RISC-0 Browser STARK PoC</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        pre { background: #f0f0f0; padding: 10px; overflow-x: auto; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>RISC-0 Browser STARK PoC</h1>
+    <p>Target: Prove x<sup>2</sup> = y entirely in browser.</p>
+    
+    <div id="status">Loading...</div>
+    <br>
+    <button id="proveBtn" disabled>Generate Proof (x=17)</button>
+    
+    <h3>Output:</h3>
+    <pre id="output"></pre>
+    
+    <script type="module" src="/src/index.ts"></script>
+</body>
+</html>
