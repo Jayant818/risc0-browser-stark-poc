@@ -9,11 +9,17 @@ export default defineConfig({
     wasm(),
     topLevelAwait()
   ],
+  server: {
+    fs: {
+      // Allow serving files from one level up to the project root
+      allow: ['..']
+    }
+  },
   worker: {
     format: 'es',
     plugins: () => [wasm(), topLevelAwait()]
   },
   optimizeDeps: {
-    exclude: ['stwo-simple-poc'] // Exclude our local WASM package from optimization
+    exclude: ['stwo-simple-poc']
   }
 });

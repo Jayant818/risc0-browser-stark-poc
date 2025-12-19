@@ -130,7 +130,7 @@ pub fn init_prover() {
 #[wasm_bindgen]
 pub fn prove_fib(seed_val: u32) -> Result<String, JsValue> {
     
-    let start = web_sys::window().unwrap().performance().unwrap().now();
+    let start = js_sys::Date::now();
 
     // Setup Inputs
     let a0 = BaseField::one();
@@ -172,7 +172,7 @@ pub fn prove_fib(seed_val: u32) -> Result<String, JsValue> {
         commitment_scheme,
     ).map_err(|e| JsValue::from_str(&format!("Proving error: {:?}", e)))?;
 
-    let end = web_sys::window().unwrap().performance().unwrap().now();
+    let end = js_sys::Date::now();
 
     // Serialize
     let proof_bytes = bincode::serialize(&proof)
