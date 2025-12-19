@@ -17,7 +17,8 @@ num-traits = "0.2"
 bincode = "1.3"
 js-sys = "0.3"
 
-# CRITICAL: Disable "parallel" feature to prevent WASM panic
+# Use local patched versions. 
+# We rely on "prover" but we have manually stripped 'rayon' from it in the vendor folder.
 stwo = { path = "vendor/stwo/crates/stwo", default-features = false, features = ["prover", "std"] }
 stwo-constraint-framework = { path = "vendor/stwo/crates/constraint-framework", default-features = false, features = ["prover", "std"] }
 
