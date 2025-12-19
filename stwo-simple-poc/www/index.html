@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>STWO Simple PoC</title>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
+        .card { border: 1px solid #e0e0e0; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        button { padding: 0.5rem 1rem; cursor: pointer; background: #0070f3; color: white; border: none; border-radius: 4px; font-size: 1rem; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        input { padding: 0.5rem; font-size: 1rem; width: 100px; }
+        pre { background: #f8f9fa; padding: 1rem; overflow-x: auto; border-radius: 4px; font-size: 0.9em; }
+        .success { color: #0070f3; font-weight: bold; }
+        .error { color: #d00; font-weight: bold; }
+        h1 { color: #333; }
+    </style>
+</head>
+<body>
+    <h1>STWO Prover PoC</h1>
+    <p>
+        Client-side STARK proving using <a href="https://github.com/starkware-libs/stwo">STWO</a> (Circle STARKs) in WebAssembly.
+        <br>
+        Proves knowledge of a valid <b>Fibonacci-like sequence</b> where:
+        <code>a<sub>i+2</sub> = a<sub>i+1</sub><sup>2</sup> + a<sub>i</sub><sup>2</sup></code>
+    </p>
+    
+    <div class="card">
+        <h3>1. Setup & Prove</h3>
+        <p>
+            Private Input (Seed): <input type="number" id="seed" value="12345"><br>
+            <i>(Sequence starts with 1, Seed)</i>
+        </p>
+        <button id="proveBtn">Generate Proof</button>
+        <p id="proveStatus">Loading WASM...</p>
+    </div>
+
+    <div class="card">
+        <h3>2. Verify</h3>
+        <p>Verifies the proof and the claimed last value of the sequence.</p>
+        <button id="verifyBtn" disabled>Verify Proof</button>
+        <p id="verifyStatus"></p>
+    </div>
+
+    <div class="card">
+        <h3>Proof Data</h3>
+        <pre id="output">(No proof generated yet)</pre>
+    </div>
+
+    <script type="module">
+        // Import the WASM module
+        import init, { prove_fib, verify_fib } from '../pkg/stwo_simple_poc.js';
+
+        let currentProofJson = null;
+
+        async function run() {
+            try {
+                await init();
+                document.getElementById('proveStatus').innerText = "WASM Loaded. Ready to prove.";
+            } catch (e) {
+                document.getElementById('proveStatus').innerText = "Error loading WASM: " + e;
+            }
+        }
+
+        run();
+
+        document.getElementById('proveBtn').onclick = async () => {
+            const seed = parseInt(document.getElementById('seed').value);
+            const status = document.getElementById('proveStatus');
+            const output = document.getElementById('output');
+            
+            status.innerText = "Proving... (Calculating trace & Circle STARK)";
+            output.innerText = "Generating...";
+            document.getElementById('verifyBtn').disabled = true;
+            document.getElementById('verifyStatus').innerText = "";
+            
+            // Allow UI render
+            await new Promise(r => setTimeout(r, 50));
+
+            try {
+                const resultJson = prove_fib(seed);
+                currentProofJson = resultJson;
+                const result = JSON.parse(resultJson);
+                
+                status.innerHTML = `<span class="success">Proof Generated!</span> Time: ${result.time_ms.toFixed(2)}ms`;
+                output.innerText = JSON.stringify(result, null, 2);
+                document.getElementById('verifyBtn').disabled = false;
+            } catch (e) {
+                status.innerHTML = `<span class="error">Proving Failed: ${e}</span>`;
+                output.innerText = "Error";
+                console.error(e);
+            }
+        };
+
+        document.getElementById('verifyBtn').onclick = async () => {
+            if (!currentProofJson) return;
+            const status = document.getElementById('verifyStatus');
+            status.innerText = "Verifying...";
+            
+            await new Promise(r => setTimeout(r, 50));
+
+            try {
+                const isValid = verify_fib(currentProofJson);
+                if (isValid) {
+                    status.innerHTML = `<span class="success">✅ VERIFICATION PASSED</span>`;
+                } else {
+                    status.innerHTML = `<span class="error">❌ VERIFICATION FAILED</span>`;
+                }
+            } catch (e) {
+                status.innerHTML = `<span class="error">Verification Error: ${e}</span>`;
+            }
+        };
+    </script>
+</body>
+</html>
