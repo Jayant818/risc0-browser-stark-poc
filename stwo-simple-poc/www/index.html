@@ -47,15 +47,49 @@
     </div>
 
     <script type="module">
-        // Import the WASM module
-        import init, { prove_fib, verify_fib } from '../pkg/stwo_simple_poc.js';
+        // Import only init and verification logic for the main thread
+        import init, { verify_fib } from '../pkg/stwo_simple_poc.js';
 
         let currentProofJson = null;
+        let worker = null;
 
         async function run() {
             try {
+                // Initialize WASM for the main thread (needed for verify_fib)
                 await init();
-                document.getElementById('proveStatus').innerText = "WASM Loaded. Ready to prove.";
+                
+                // Initialize the worker
+                worker = new Worker('./worker.js', { type: 'module' });
+                
+                worker.onmessage = (e) => {
+                    const { type, payload } = e.data;
+                    const status = document.getElementById('proveStatus');
+                    const output = document.getElementById('output');
+
+                    if (type === 'STATUS' && payload === 'READY') {
+                         status.innerText = "WASM Ready (Worker Initialized).";
+                         document.getElementById('proveBtn').disabled = false;
+                    } else if (type === 'PROOF_COMPLETE') {
+                        currentProofJson = payload;
+                        const result = JSON.parse(currentProofJson);
+                        
+                        status.innerHTML = `<span class="success">Proof Generated!</span> Time: ${result.time_ms.toFixed(2)}ms`;
+                        output.innerText = JSON.stringify(result, null, 2);
+                        document.getElementById('verifyBtn').disabled = false;
+                        document.getElementById('proveBtn').disabled = false;
+                    } else if (type === 'ERROR') {
+                        status.innerHTML = `<span class="error">Worker Error: ${payload}</span>`;
+                        output.innerText = "Error";
+                        console.error(payload);
+                        document.getElementById('proveBtn').disabled = false;
+                    }
+                };
+
+                // Send initialization signal to worker
+                worker.postMessage({ type: 'INIT' });
+                document.getElementById('proveStatus').innerText = "Initializing Worker...";
+                document.getElementById('proveBtn').disabled = true;
+
             } catch (e) {
                 document.getElementById('proveStatus').innerText = "Error loading WASM: " + e;
             }
@@ -63,7 +97,7 @@
 
         run();
 
-        document.getElementById('proveBtn').onclick = async () => {
+        document.getElementById('proveBtn').onclick = () => {
             const seed = parseInt(document.getElementById('seed').value);
             const status = document.getElementById('proveStatus');
             const output = document.getElementById('output');
@@ -71,24 +105,10 @@
             status.innerText = "Proving... (Calculating trace & Circle STARK)";
             output.innerText = "Generating...";
             document.getElementById('verifyBtn').disabled = true;
+            document.getElementById('proveBtn').disabled = true;
             document.getElementById('verifyStatus').innerText = "";
             
-            // Allow UI render
-            await new Promise(r => setTimeout(r, 50));
-
-            try {
-                const resultJson = prove_fib(seed);
-                currentProofJson = resultJson;
-                const result = JSON.parse(resultJson);
-                
-                status.innerHTML = `<span class="success">Proof Generated!</span> Time: ${result.time_ms.toFixed(2)}ms`;
-                output.innerText = JSON.stringify(result, null, 2);
-                document.getElementById('verifyBtn').disabled = false;
-            } catch (e) {
-                status.innerHTML = `<span class="error">Proving Failed: ${e}</span>`;
-                output.innerText = "Error";
-                console.error(e);
-            }
+            worker.postMessage({ type: 'PROVE', payload: seed });
         };
 
         document.getElementById('verifyBtn').onclick = async () => {
@@ -99,6 +119,7 @@
             await new Promise(r => setTimeout(r, 50));
 
             try {
+                // Verification is fast enough to run on main thread
                 const isValid = verify_fib(currentProofJson);
                 if (isValid) {
                     status.innerHTML = `<span class="success">✅ VERIFICATION PASSED</span>`;

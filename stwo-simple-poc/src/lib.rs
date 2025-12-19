@@ -1,15 +1,17 @@
 #![feature(allocator_api)] 
 
 use wasm_bindgen::prelude::*;
+use std::sync::OnceLock;
 use serde::{Serialize, Deserialize};
 use itertools::Itertools;
 use stwo::core::fields::m31::BaseField;
 use stwo::core::fields::FieldExpOps;
 use stwo::core::poly::circle::CanonicCoset;
 use stwo::core::ColumnVec;
-// Use CpuBackend for WASM simplicity/compatibility
-use stwo::prover::backend::CpuBackend;
+// Use SimdBackend to support FrameworkComponent
+use stwo::prover::backend::simd::SimdBackend;
 use stwo::prover::poly::circle::{CircleEvaluation, PolyOps};
+use stwo::prover::poly::twiddles::TwiddleTree;
 use stwo::prover::poly::BitReversedOrder;
 use stwo_constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator};
 use stwo::core::pcs::{CommitmentSchemeVerifier, PcsConfig};
@@ -26,6 +28,8 @@ use num_traits::{One, Zero};
 // Define constants
 const LOG_N_ROWS: u32 = 5; // 32 rows
 const FIB_LEN: usize = 16;  // Small sequence
+
+static TWIDDLES: OnceLock<TwiddleTree<SimdBackend>> = OnceLock::new();
 
 #[derive(Serialize, Deserialize)]
 pub struct ProofResult {
@@ -70,7 +74,7 @@ impl FrameworkEval for FibonacciEval {
 pub type FibonacciComponent = FrameworkComponent<FibonacciEval>;
 
 // 2. Helper to generate trace
-fn generate_trace(log_size: u32, start_a: BaseField, start_b: BaseField) -> (ColumnVec<CircleEvaluation<CpuBackend, BaseField, BitReversedOrder>>, BaseField) {
+fn generate_trace(log_size: u32, start_a: BaseField, start_b: BaseField) -> (ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>, BaseField) {
     let n_rows = 1 << log_size;
     
     // CpuBackend columns are just Vec<BaseField>
@@ -104,15 +108,27 @@ fn generate_trace(log_size: u32, start_a: BaseField, start_b: BaseField) -> (Col
     let domain = CanonicCoset::new(log_size).circle_domain();
     let evals = trace
         .into_iter()
-        .map(|eval| CircleEvaluation::<CpuBackend, _, BitReversedOrder>::new(domain, eval))
+        .map(|eval| CircleEvaluation::<SimdBackend, _, BitReversedOrder>::new(domain, eval.into_iter().collect()))
         .collect_vec();
         
     (evals, last_val)
 }
 
 #[wasm_bindgen]
-pub fn prove_fib(seed_val: u32) -> Result<String, JsValue> {
+pub fn init_prover() {
     console_error_panic_hook::set_once();
+    TWIDDLES.get_or_init(|| {
+        let config = PcsConfig::default();
+        SimdBackend::precompute_twiddles(
+            CanonicCoset::new(LOG_N_ROWS + 1 + config.fri_config.log_blowup_factor)
+                .circle_domain()
+                .half_coset,
+        )
+    });
+}
+
+#[wasm_bindgen]
+pub fn prove_fib(seed_val: u32) -> Result<String, JsValue> {
     
     let start = web_sys::window().unwrap().performance().unwrap().now();
 
@@ -125,18 +141,14 @@ pub fn prove_fib(seed_val: u32) -> Result<String, JsValue> {
 
     // Config
     let config = PcsConfig::default();
-    let twiddles = CpuBackend::precompute_twiddles(
-        CanonicCoset::new(LOG_N_ROWS + 1 + config.fri_config.log_blowup_factor)
-            .circle_domain()
-            .half_coset,
-    );
+    let twiddles = TWIDDLES.get().expect("Prover not initialized");
 
     // Channel & Commitment Scheme
     let prover_channel = &mut Blake2sM31Channel::default();
     let mut commitment_scheme = CommitmentSchemeProver::<
-        CpuBackend,
+        SimdBackend,
         Blake2sM31MerkleChannel,
-    >::new(config, &twiddles);
+    >::new(config, twiddles);
 
     // Commit to trace
     let mut tree_builder = commitment_scheme.tree_builder();
@@ -154,7 +166,7 @@ pub fn prove_fib(seed_val: u32) -> Result<String, JsValue> {
     );
 
     // Prove
-    let proof = prove::<CpuBackend, Blake2sM31MerkleChannel>(
+    let proof = prove::<SimdBackend, Blake2sM31MerkleChannel>(
         &[&component],
         prover_channel,
         commitment_scheme,
