@@ -63,7 +63,7 @@ function App() {
   return (
     <div className="container">
       <div className="card">
-        <h1>ZK Compliance Gatekeeper</h1>
+        <h1>ZK Age Verifier</h1>
         
         {status === 'idle' && (
           <div className="flow">
